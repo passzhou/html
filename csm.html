@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>fly☆飞</title>
+<script>
+// 在页面加载时执行
+document.addEventListener('DOMContentLoaded', function() {
+    var items = ["米粉", "面条", "炒饭", "炒菜", "鸡公煲","去食堂"]; // 抽取项列表
+    var randomItem;
+
+    // 抽取函数
+    function draw() {
+        var index = Math.floor(Math.random() * items.length); // 生成随机索引
+        randomItem = items[index]; // 根据索引获取随机项
+        document.getElementById("result").innerText = randomItem; // 显示结果
+    }
+
+    // 绑定按钮点击事件
+    document.getElementById("drawButton").addEventListener("click", draw);
+});
+</script>
+</head>
+<body>
+
+<h2>等会吃什么</h2>
+<button id="drawButton">抽取</button>
+<p id="result"></p> <!-- 显示抽取结果的元素 -->
+
+</body>
+</html>
