@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>今天吃什么</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            text-align: center;
+            padding: 10px; /* Reduced padding for smaller screens */
+            margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        h1 {
+            color: #5c67f2;
+        }
+        #randomButton {
+            background-color: #5c67f2;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 5px;
+            margin: 10px; /* Consistent margin */
+        }
+        #randomButton:hover {
+            background-color: #4a54e1;
+        }
+        #dish {
+            font-size: 24px;
+            margin: 10px; /* Consistent margin */
+        }
+        /* Media query for smaller screens */
+        @media (max-width: 768px) {
+            body {
+                padding: 5px; /* Even less padding for very small screens */
+            }
+            #dish {
+                font-size: 20px; /* Slightly smaller font size */
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>今天吃什么？</h1>
+    <div id="dish"></div>
+    <button id="randomButton">随机选择</button>
+
+    <script>
+        const dishes = ["干锅", "冰粉", "卤肉饭", "小吃街", "麻辣烫", "酱香饼", "手抓饼", "卤肉卷", "肉夹馍", "鸭腿", "凉皮", "武大郎烧饼", "绝味鸭脖", "曹氏", "五谷低卡", "荤豆花", "饭团", "炸串", "抄手", "饺子", "螺蛳粉", "石锅泡泡鸡", "临榆", "烤鱼饭", "鸡公煲", "干面", "汤面", "冒烤鸭", "黄焖鸡", "盖浇饭", "串串", "烧烤", "火锅", "花雕醉鸡", "煎饼"];
+        const dishElement = document.getElementById('dish');
+        const randomButton = document.getElementById('randomButton');
+
+        randomButton.addEventListener('click', function() {
+            const randomIndex = Math.floor(Math.random() * dishes.length);
+            dishElement.textContent = dishes[randomIndex];
+            // Keep the button below the dish after selection
+            dishElement.style.marginTop = '20px';
+        });
+    </script>
+</body>
+</html>
