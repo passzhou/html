@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>圣诞树 · 爱心</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;overflow:hidden;background:#03050c}
+  canvas{display:block;position:fixed;inset:0}
+  .ui{
+    position:fixed;left:0;right:0;bottom:0;text-align:center;
+    pointer-events:none;padding-bottom:max(14px,env(safe-area-inset-bottom));
+    font-family:"Segoe UI",system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .ui h1{
+    font-size:clamp(17px,4vw,32px);font-weight:600;letter-spacing:.18em;
+    background:linear-gradient(180deg,#fff8dd,#ffd76e 45%,#ff9d4d);
+    -webkit-background-clip:text;background-clip:text;color:transparent;
+    animation:glow 2.6s ease-in-out infinite;
+  }
+  .ui p{
+    margin-top:6px;font-size:clamp(11px,2.4vw,14px);
+    letter-spacing:.32em;color:rgba(255,205,225,.72);
+  }
+  @keyframes glow{
+    0%,100%{opacity:.82;filter:drop-shadow(0 0 12px rgba(255,190,80,.35))}
+    50%{opacity:1;filter:drop-shadow(0 0 26px rgba(255,190,80,.85))}
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="ui">
+  <h1>MERRY CHRISTMAS</h1>
+  <p>❤ 圣诞快乐 ❤</p>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const TAU = Math.PI * 2;
+  const LIGHT_HUES = [0, 42, 190, 285, 155, 320];
+
+  let W = 0, H = 0, DPR = 1;
+  let cx = 0, groundY = 0, treeH = 0, baseR = 0, topY = 0;
+  let bgGrad = null;
+
+  let stars = [], snow = [], treePts = [], heartPts = [], floaters = [];
+  let heartPath = null;
+
+  /* ============ 爱心路径（单位大小，中心对齐） ============ */
+  function makeHeartPath() {
+    const p = new Path2D();
+    const N = 90;
+    for (let i = 0; i <= N; i++) {
+      const a = (i / N) * TAU;
+      const raw = 13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a);
+      const x = (16 * Math.pow(Math.sin(a), 3)) / 17;
+      const y = -raw / 17 - 0.35;
+      if (i === 0) p.moveTo(x, y); else p.lineTo(x, y);
+    }
+    p.closePath();
+    return p;
+  }
+
+  /* ============ 尺寸 / 布局 ============ */
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * DPR);
+    canvas.height = Math.round(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    cx = W / 2;
+    groundY = H * 0.80;
+    treeH = Math.min(H * 0.62, W * 1.15);
+    baseR = treeH * 0.38;
+    topY = groundY - treeH;
+
+    bgGrad = ctx.createRadialGradient(cx, H * 0.38, 0, cx, H * 0.38, Math.max(W, H) * 0.85);
+    bgGrad.addColorStop(0, '#152542');
+    bgGrad.addColorStop(0.5, '#0a1224');
+    bgGrad.addColorStop(1, '#03050c');
+
+    initStars();
+    initSnow();
+    buildTree();
+    buildHearts();
+
+    floaters = [];
+    for (let i = 0; i < 16; i++) floaters.push(makeFloater(true));
+  }
+
+  /* ============ 星空 ============ */
+  function initStars() {
+    stars = [];
+    const n = Math.min(280, Math.round((W * H) / 8000));
+    for (let i = 0; i < n; i++) {
+      stars.push({
+        x: Math.random() * W,
+        y: Math.random() * H * 0.9,
+        r: 0.4 + Math.random() * 1.2,
+        p: Math.random() * TAU,
+        s: 0.6 + Math.random() * 1.8
+      });
+    }
+  }
+
+  /* ============ 雪花 ============ */
+  function makeFlake(rand) {
+    return {
+      x: Math.random() * W,
+      y: rand ? Math.random() * H : -12,
+      r: 0.6 + Math.random() * 1.8,
+      vy: 22 + Math.random() * 55,
+      vx: (Math.random() - 0.5) * 18,
+      p: Math.random() * TAU,
+      sp: 0.6 + Math.random() * 1.6,
+      a: 0.25 + Math.random() * 0.55
+    };
+  }
+  function initSnow() {
+    snow = [];
+    const n = Math.min(180, Math.round(W / 9));
+    for (let i = 0; i < n; i++) snow.push(makeFlake(true));
+  }
+
+  /* ============ 圣诞树粒子（3D 圆锥投影） ============ */
+  function buildTree() {
+    treePts = [];
+    const N = Math.round(Math.min(1300, Math.max(700, (W * H) / 1400)));
+    const TURNS = 15;
+
+    for (let i = 0; i < N; i++) {
+      const t = i / (N - 1);                              // 0 底部 → 1 顶部
+      const spread = Math.pow(1 - t, 1.08);
+      const angle = t * TURNS * TAU + Math.random() * 0.35;
+      const r = spread * (0.66 + Math.random() * 0.34);
+      const depth = Math.sin(angle) * r;                  // -1 后 → 1 前
+      const isLight = Math.random() < 0.13;
+
+      let color;
+      if (isLight) {
+        const hue = LIGHT_HUES[(Math.random() * LIGHT_HUES.length) | 0];
+        color = 'hsl(' + hue + ',100%,72%)';
+      } else {
+        const hue = 128 + Math.random() * 34;
+        color = 'hsl(' + hue.toFixed(0) + ',58%,' + (30 + Math.random() * 24).toFixed(0) + '%)';
+      }
+
+      treePts.push({
+        t: Math.min(1, Math.max(0, t + (Math.random() - 0.5) * 0.018)),
+        x: Math.cos(angle) * r,
+        depth: depth,
+        isLight: isLight,
+        color: color,
+        size: isLight ? 1.6 + Math.random() * 1.7 : 0.8 + Math.random() * 1.1,
+        phase: Math.random() * TAU,
+        speed: 1 + Math.random() * 2.6
+      });
+    }
+    // 后面的先画，前面的后画（深度排序）
+    treePts.sort(function (a, b) { return a.depth - b.depth; });
+  }
+
+  /* ============ 树上的爱心 ============ */
+  function buildHearts() {
+    heartPts = [];
+    const n = 20;
+    for (let i = 0; i < n; i++) {
+      const t = 0.08 + (i / n) * 0.86;
+      const angle = i * 2.7 + 0.4;
+      const r = Math.pow(1 - t, 1.05) * 0.92;
+      heartPts.push({
+        t: t,
+        x: Math.cos(angle) * r,
+        depth: Math.sin(angle) * r,
+        phase: Math.random() * TAU,
+        size: 0.018 + Math.random() * 0.012,
+        hue: [345, 330, 355, 10][i % 4]
+      });
+    }
+    heartPts.sort(function (a, b) { return a.depth - b.depth; });
+  }
+
+  /* ============ 飘浮爱心 ============ */
+  function makeFloater(rand) {
+    return {
+      x: cx + (Math.random() - 0.5) * baseR * 2.8,
+      y: rand ? groundY - Math.random() * 300 : groundY - Math.random() * 70,
+      vy: -(40 + Math.random() * 70),
+      size: 5 + Math.random() * 8,
+      life: rand ? Math.random() * 4 : 0,
+      phase: Math.random() * TAU,
+      color: 'hsl(' + [345, 335, 355, 5][(Math.random() * 4) | 0] +
+             ',95%,' + (62 + Math.random() * 15).toFixed(0) + '%)'
+    };
+  }
+
+  /* ============ 绘制：星空 ============ */
+  function drawStars(time) {
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < stars.length; i++) {
+      const s = stars[i];
+      const f = Math.sin(time * s.s + s.p) * 0.5 + 0.5;
+      ctx.globalAlpha = (0.22 + 0.78 * f * f) * 0.9;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  /* ============ 绘制：地面光晕 ============ */
+  function drawGroundGlow() {
+    ctx.save();
+    ctx.translate(cx, groundY);
+    ctx.scale(1, 0.32);
+    const R = baseR * 2.3;
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+    g.addColorStop(0, 'rgba(90,190,255,0.16)');
+    g.addColorStop(0.45, 'rgba(60,120,220,0.07)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(0, 0, R, 0, TAU);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /* ============ 绘制：圣诞树 ============ */
+  function drawTree(time) {
+    for (let i = 0; i < treePts.length; i++) {
+      const p = treePts[i];
+      const dN = (p.depth + 1) * 0.5;                    // 0 后 → 1 前
+      const px = cx + p.x * baseR;
+      const py = groundY - p.t * treeH;
+      const s = p.size * (0.5 + dN * 0.8);
+
+      let a;
+      if (p.isLight) {
+        const f = Math.sin(time * p.speed + p.phase);
+        a = (0.22 + 0.78 * f * f) * (0.35 + dN * 0.75);
+      } else {
+        a = 0.16 + dN * 0.66;
+      }
+
+      ctx.globalAlpha = a;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(px, py, s, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  /* ============ 绘制：树上的爱心 ============ */
+  function drawHeartsOnTree(time) {
+    for (let i = 0; i < heartPts.length; i++) {
+      const h = heartPts[i];
+      const dN = (h.depth + 1) * 0.5;
+      const px = cx + h.x * baseR;
+      const py = groundY - h.t * treeH;
+      const pulse = 0.85 + 0.3 * Math.sin(time * 2.4 + h.phase);
+      const size = treeH * h.size * (0.55 + dN * 0.7) * pulse;
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.scale(size, size);
+      ctx.globalAlpha = 0.38 + dN * 0.55;
+      ctx.shadowColor = 'hsla(' + h.hue + ',100%,68%,0.95)';
+      ctx.shadowBlur = 16 * pulse;
+      ctx.fillStyle = 'hsl(' + h.hue + ',95%,' + (62 + dN * 12).toFixed(0) + '%)';
+      ctx.fill(heartPath);
+      ctx.restore();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  /* ============ 绘制：树顶星星 ============ */
+  function drawTopStar(time) {
+    const sx = cx;
+    const sy = topY - treeH * 0.02;
+    const pulse = 0.85 + 0.15 * Math.sin(time * 2);
+    const R = treeH * 0.048 * pulse;
+
+    const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 6);
+    g.addColorStop(0, 'rgba(255,246,205,0.55)');
+    g.addColorStop(0.25, 'rgba(255,215,120,0.22)');
+    g.addColorStop(1, 'rgba(255,180,60,0)');
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(sx, sy, R * 6, 0, TAU);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(time * 0.35);
+    ctx.beginPath();
+    const pts = 5;
+    for (let i = 0; i < pts * 2; i++) {
+      const rad = (i % 2 === 0) ? R : R * 0.42;
+      const ang = (i * Math.PI) / pts - Math.PI / 2;
+      const x = Math.cos(ang) * rad;
+      const y = Math.sin(ang) * rad;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#fff3c4';
+    ctx.shadowColor = 'rgba(255,220,120,1)';
+    ctx.shadowBlur = 28;
+    ctx.fill();
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  /* ============ 绘制：雪 ============ */
+  function drawSnow(dt) {
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < snow.length; i++) {
+      const s = snow[i];
+      s.p += s.sp * dt;
+      s.y += s.vy * dt;
+      s.x += (s.vx + Math.sin(s.p) * 22) * dt;
+
+      if (s.y > H + 14 || s.x < -40 || s.x > W + 40) {
+        Object.assign(s, makeFlake(false));
+        s.x = Math.random() * W;
+      }
+      ctx.globalAlpha = s.a;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  /* ============ 绘制：飘浮爱心 ============ */
+  function drawFloaters(dt, time) {
+    for (let i = 0; i < floaters.length; i++) {
+      const f = floaters[i];
+      f.life += dt;
+      f.y += f.vy * dt;
+      f.x += Math.sin(time * 1.2 + f.phase) * 16 * dt;
+
+      if (f.y < -70 || f.life > 14) {
+        floaters[i] = makeFloater(false);
+        continue;
+      }
+
+      const fadeIn = Math.min(1, f.life / 1.2);
+      const fadeOut = Math.min(1, Math.max(0, f.y / (H * 0.35)));
+      const a = fadeIn * fadeOut;
+      if (a <= 0.01) continue;
+
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      ctx.scale(f.size, f.size);
+      ctx.globalAlpha = a * 0.92;
+      ctx.fillStyle = f.color;
+      ctx.shadowColor = f.color;
+      ctx.shadowBlur = 14;
+      ctx.fill(heartPath);
+      ctx.restore();
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  /* ============ 主渲染 ============ */
+  function render(time, dt) {
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, W, H);
+
+    drawStars(time);
+    drawGroundGlow();
+    drawTree(time);
+    drawHeartsOnTree(time);
+    drawTopStar(time);
+    drawSnow(dt);
+    drawFloaters(dt, time);
+
+    ctx.globalAlpha = 1;
+  }
+
+  /* ============ 循环 ============ */
+  let prev = 0;
+  function frame(now) {
+    if (!prev) prev = now;
+    const dt = Math.min((now - prev) / 1000, 0.05);
+    prev = now;
+    render(now / 1000, dt);
+    requestAnimationFrame(frame);
+  }
+
+  /* ============ 启动 ============ */
+  heartPath = makeHeartPath();
+  resize();
+  window.addEventListener('resize', resize, { passive: true });
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
